@@ -34,7 +34,7 @@ if (!fs.existsSync(ytDlpPath)) {
 const ytDlp = new YTDlpWrap(ytDlpPath);
 
 // Define path to cookies file
-const cookiesPath = path.join(__dirname, "youtube_cookies.txt");
+const cookiesPath = "/opt/render/project/src/youtube_cookies.txt";
 
 // Endpoint to download YouTube audio
 app.post("/download", async (req, res) => {
