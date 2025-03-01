@@ -33,6 +33,9 @@ if (!fs.existsSync(ytDlpPath)) {
 // Initialize yt-dlp with correct binary path
 const ytDlp = new YTDlpWrap(ytDlpPath);
 
+// Define path to cookies file
+const cookiesPath = path.join(__dirname, "youtube_cookies.txt");
+
 // Endpoint to download YouTube audio
 app.post("/download", async (req, res) => {
     const { query } = req.body;
@@ -44,9 +47,10 @@ app.post("/download", async (req, res) => {
     console.log(`🔍 Searching YouTube for: ${query}`);
 
     try {
-        // Search YouTube for the best match
+        // Search YouTube using authentication cookies
         const searchResult = await ytDlp.execPromise([
             "ytsearch1:" + query,
+            "--cookies", cookiesPath,  // Use authentication cookies
             "--print", "%(id)s"
         ]);
 
@@ -66,10 +70,11 @@ app.post("/download", async (req, res) => {
             fs.mkdirSync(path.join(__dirname, "downloads"), { recursive: true });
         }
 
-        // Download the audio
+        // Download the audio using cookies
         console.log("⬇️ Downloading audio...");
         await ytDlp.execPromise([
             videoUrl,
+            "--cookies", cookiesPath,  // Use authentication cookies
             "-x",
             "--audio-format", "mp3",
             "-o", outputFilePath
