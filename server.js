@@ -10,7 +10,7 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const ytDlpWrap = new YTDlpWrap(); // Use yt-dlp-wrap
+const ytDlp = new YTDlpWrap(); // Use yt-dlp-wrap
 
 app.post('/download', async (req, res) => {
     const query = req.body.query?.trim();
@@ -19,37 +19,31 @@ app.post('/download', async (req, res) => {
     console.log(`🔎 Searching YouTube for: ${query}`);
 
     try {
-        const videoUrls = await ytDlpWrap.execPromise([
+        const outputFileName = `audio_${Date.now()}.m4a`;
+        const filePath = path.resolve(__dirname, outputFileName);
+
+        // Run yt-dlp using yt-dlp-wrap
+        await ytDlp.execPromise([
             `ytsearch1:${query}`,
-            '--print', '%(webpage_url)s'
-        ]);
-        const videoUrl = videoUrls.trim();
-        if (!videoUrl) throw new Error('No results found');
-
-        console.log(`✅ Found video: ${videoUrl}`);
-
-        const timestamp = Date.now();
-        const outputFileName = `/tmp/audio_${timestamp}.m4a`;
-
-        await ytDlpWrap.execPromise([
-            '-x', '--audio-format', 'm4a',
-            '-o', outputFileName,
-            videoUrl
+            '-x',
+            '--audio-format',
+            'm4a',
+            '-o',
+            filePath
         ]);
 
-        console.log(`🎶 Downloaded: ${outputFileName}`);
+        console.log(`🎶 Audio downloaded: ${outputFileName}`);
 
-        res.download(outputFileName, 'audio.m4a', (err) => {
+        res.download(filePath, 'audio.m4a', (err) => {
             if (err) console.error('❌ Error sending file:', err);
-            fs.unlink(outputFileName, (unlinkErr) => {
-                if (unlinkErr) console.error('❌ Error deleting file:', unlinkErr);
-                else console.log(`🗑️ Deleted: ${outputFileName}`);
-            });
+            fs.unlink(filePath, () => console.log(`🗑️ Deleted: ${outputFileName}`));
         });
     } catch (error) {
         console.error('❌ Error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Download failed' });
     }
 });
 
-app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+app.listen(port, () => {
+    console.log(`🚀 Server running on port ${port}`);
+});
