@@ -33,31 +33,27 @@ if (!fs.existsSync(ytDlpPath)) {
 // Initialize yt-dlp with correct binary path
 const ytDlp = new YTDlpWrap(ytDlpPath);
 
-// Define path to cookies file
-const cookiesPath = path.join(__dirname, "cookies.txt");
-
-// Ensure "downloads" folder exists
-const downloadsFolder = path.join(__dirname, "downloads");
-if (!fs.existsSync(downloadsFolder)) {
-    fs.mkdirSync(downloadsFolder, { recursive: true });
+// Function to ensure 'downloads' directory exists
+const downloadsDir = path.join(__dirname, "downloads");
+if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
 }
 
-// Endpoint to handle YouTube audio download requests
+// Endpoint to download YouTube audio
 app.post("/download", async (req, res) => {
+    const { query } = req.body;
+
+    if (!query) {
+        return res.status(400).json({ error: "No search query provided." });
+    }
+
+    console.log(`🔍 Searching YouTube for: ${query}`);
+
     try {
-        const { song, artist } = req.body;
-
-        if (!song || !artist) {
-            return res.status(400).json({ error: "Song name and artist are required." });
-        }
-
-        const query = `${song} ${artist}`;
-        console.log(`🔍 Searching YouTube for: ${query}`);
-
-        // Search YouTube using authentication cookies
+        // Search YouTube using fresh cookies from the browser
         const searchResult = await ytDlp.execPromise([
             `ytsearch1:${query}`,
-            "--cookies", cookiesPath,
+            "--cookies-from-browser", "chrome",  // Change to "firefox" if using Firefox
             "--print", "%(id)s"
         ]);
 
@@ -70,19 +66,13 @@ app.post("/download", async (req, res) => {
         console.log(`🎵 Found video: ${videoUrl}`);
 
         // Define output file path
-        const outputFilePath = path.join(downloadsFolder, `${videoId}.mp3`);
+        const outputFilePath = path.join(downloadsDir, `${videoId}.mp3`);
 
-        // Check if file already exists (avoid re-downloading)
-        if (fs.existsSync(outputFilePath)) {
-            console.log("✅ File already exists, returning existing file.");
-            return res.json({ message: "File ready!", file: `/downloads/${videoId}.mp3` });
-        }
-
-        // Download the audio using cookies
+        // Download the audio using fresh browser cookies
         console.log("⬇️ Downloading audio...");
         await ytDlp.execPromise([
             videoUrl,
-            "--cookies", cookiesPath,
+            "--cookies-from-browser", "chrome",  // Change to "firefox" if using Firefox
             "-x",
             "--audio-format", "mp3",
             "-o", outputFilePath
@@ -90,19 +80,27 @@ app.post("/download", async (req, res) => {
 
         console.log("✅ Download complete!");
 
-        // Send response with file URL
+        // Send file URL
         res.json({ message: "Download complete!", file: `/downloads/${videoId}.mp3` });
 
     } catch (error) {
         console.error("❌ Error downloading:", error);
+
+        // Check if error is due to bot detection
+        if (error.message.includes("429") || error.message.includes("Sign in to confirm")) {
+            return res.status(403).json({
+                error: "YouTube is blocking requests. Try using a VPN or different IP address."
+            });
+        }
+
         res.status(500).json({ error: "Failed to download audio." });
     }
 });
 
-// Serve downloaded MP3 files
-app.use("/downloads", express.static(downloadsFolder));
+// Serve static files from the downloads folder
+app.use("/downloads", express.static(downloadsDir));
 
-// Start the server
+// Start server
 app.listen(port, () => {
     console.log(`🚀 Server running on port ${port}`);
 });
