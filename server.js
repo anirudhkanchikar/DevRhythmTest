@@ -14,7 +14,10 @@ app.use(express.json());
 // Define yt-dlp path
 const ytDlpPath = path.join(__dirname, "yt-dlp");
 
-// Download yt-dlp if not found
+// Define path to cookies file
+const cookiesPath = path.join(__dirname, "cookies.txt");
+
+// Ensure yt-dlp is available
 if (!fs.existsSync(ytDlpPath)) {
     console.log("🔽 Downloading yt-dlp...");
     try {
@@ -30,63 +33,51 @@ if (!fs.existsSync(ytDlpPath)) {
     console.log("✅ yt-dlp already exists!");
 }
 
-// Initialize yt-dlp with correct binary path
+// Initialize yt-dlp
 const ytDlp = new YTDlpWrap(ytDlpPath);
 
-// Function to ensure 'downloads' directory exists
+// Ensure 'downloads' directory exists
 const downloadsDir = path.join(__dirname, "downloads");
 if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
 }
 
-// Define cookies.txt path
-const cookiesPath = path.join(__dirname, "cookies.txt");
-
-// Check if cookies file exists
-if (!fs.existsSync(cookiesPath)) {
-    console.error("❌ ERROR: cookies.txt file not found!");
-} else {
-    console.log("✅ Found cookies.txt");
-}
-
-// Endpoint to download YouTube audio
+// 📌 **Download YouTube Audio**
 app.post("/download", async (req, res) => {
     const { song, artist } = req.body;
 
     if (!song || !artist) {
-        return res.status(400).json({ error: "Song name and artist are required." });
+        return res.status(400).json({ error: "Song and artist are required." });
     }
 
     const query = `${song} ${artist}`;
-    console.log(`🔍 Searching YouTube for: ${query}`);
+    console.log(`🔍 Received request: Searching YouTube for: ${query}`);
 
     try {
-        // Search YouTube using cookies.txt
+        // 🎯 **Step 1: Search for the song**
+        console.log("🔍 Running yt-dlp search...");
         const searchResult = await ytDlp.execPromise([
             `ytsearch1:${query}`,
-            "--cookies", cookiesPath, // Use cookies.txt
+            "--cookies", cookiesPath,  // Use authentication cookies
             "--print", "%(id)s"
         ]);
 
         const videoId = searchResult.trim();
         if (!videoId) {
-            console.error("❌ No results found.");
+            console.log("❌ No search results found!");
             return res.status(404).json({ error: "No results found." });
         }
 
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
         console.log(`🎵 Found video: ${videoUrl}`);
 
-        // Define output file path
+        // 📌 **Step 2: Download the audio**
         const outputFilePath = path.join(downloadsDir, `${videoId}.mp3`);
+        console.log("⬇️ Downloading audio...");
 
-        // Debugging: Check if yt-dlp and cookies are properly set
-        console.log("ℹ️ Running yt-dlp with cookies...");
-
-        // Download the audio using cookies.txt
         await ytDlp.execPromise([
             videoUrl,
-            "--cookies", cookiesPath, // Use cookies.txt
+            "--cookies", cookiesPath,  // Use authentication cookies
             "-x",
             "--audio-format", "mp3",
             "-o", outputFilePath
@@ -94,16 +85,15 @@ app.post("/download", async (req, res) => {
 
         console.log("✅ Download complete!");
 
-        // Send file URL
+        // Send file URL to client
         res.json({ message: "Download complete!", file: `/downloads/${videoId}.mp3` });
 
     } catch (error) {
         console.error("❌ Error downloading:", error);
 
-        // Check if error is due to bot detection or invalid cookies
         if (error.message.includes("429") || error.message.includes("Sign in to confirm")) {
             return res.status(403).json({
-                error: "YouTube is blocking requests. Update cookies.txt or try a different network."
+                error: "YouTube is blocking requests. Try using a VPN or different IP address."
             });
         }
 
@@ -111,10 +101,10 @@ app.post("/download", async (req, res) => {
     }
 });
 
-// Serve static files from the downloads folder
+// Serve static files from 'downloads' folder
 app.use("/downloads", express.static(downloadsDir));
 
-// Start server
+// Start the server
 app.listen(port, () => {
     console.log(`🚀 Server running on port ${port}`);
 });
