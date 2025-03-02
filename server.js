@@ -58,7 +58,8 @@ app.post("/download", async (req, res) => {
         console.log("🔍 Running yt-dlp search...");
         const searchResult = await ytDlp.execPromise([
             `ytsearch1:${query}`,
-            "--cookies", cookiesPath,  // Use authentication cookies
+            "--cookies", path.join(__dirname, "cookies.txt"),
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36",
             "--print", "%(id)s"
         ]);
 
