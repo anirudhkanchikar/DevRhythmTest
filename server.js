@@ -39,8 +39,15 @@ if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
 }
 
-// Define path to cookies file
+// Define cookies.txt path
 const cookiesPath = path.join(__dirname, "cookies.txt");
+
+// Check if cookies file exists
+if (!fs.existsSync(cookiesPath)) {
+    console.error("❌ ERROR: cookies.txt file not found!");
+} else {
+    console.log("✅ Found cookies.txt");
+}
 
 // Endpoint to download YouTube audio
 app.post("/download", async (req, res) => {
@@ -54,7 +61,7 @@ app.post("/download", async (req, res) => {
     console.log(`🔍 Searching YouTube for: ${query}`);
 
     try {
-        // Search YouTube using authentication cookies
+        // Search YouTube using cookies.txt
         const searchResult = await ytDlp.execPromise([
             `ytsearch1:${query}`,
             "--cookies", cookiesPath, // Use cookies.txt
@@ -63,6 +70,7 @@ app.post("/download", async (req, res) => {
 
         const videoId = searchResult.trim();
         if (!videoId) {
+            console.error("❌ No results found.");
             return res.status(404).json({ error: "No results found." });
         }
 
@@ -72,8 +80,10 @@ app.post("/download", async (req, res) => {
         // Define output file path
         const outputFilePath = path.join(downloadsDir, `${videoId}.mp3`);
 
-        // Download the audio using authentication cookies
-        console.log("⬇️ Downloading audio...");
+        // Debugging: Check if yt-dlp and cookies are properly set
+        console.log("ℹ️ Running yt-dlp with cookies...");
+
+        // Download the audio using cookies.txt
         await ytDlp.execPromise([
             videoUrl,
             "--cookies", cookiesPath, // Use cookies.txt
@@ -90,10 +100,10 @@ app.post("/download", async (req, res) => {
     } catch (error) {
         console.error("❌ Error downloading:", error);
 
-        // Handle bot detection or account verification issues
+        // Check if error is due to bot detection or invalid cookies
         if (error.message.includes("429") || error.message.includes("Sign in to confirm")) {
             return res.status(403).json({
-                error: "YouTube is blocking requests. Try using a VPN or different IP address."
+                error: "YouTube is blocking requests. Update cookies.txt or try a different network."
             });
         }
 
