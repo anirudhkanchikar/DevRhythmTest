@@ -3,7 +3,7 @@ const cors = require("cors");
 const YTDlpWrap = require("yt-dlp-wrap").default;
 const path = require("path");
 const fs = require("fs");
-const { exec } = require("child_process");
+const { execSync } = require("child_process"); // Correct import
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -25,8 +25,11 @@ if (!fs.existsSync(ytDlpPath)) {
         );
         console.log("✅ yt-dlp downloaded successfully!");
     } catch (error) {
-        console.error("❌ Failed to download yt-dlp:", error);
+        console.error("❌ Failed to download yt-dlp:", error.message);
+        process.exit(1); // Exit if yt-dlp can't be downloaded
     }
+} else {
+    console.log("✅ yt-dlp already exists!");
 }
 
 // Initialize yt-dlp
@@ -40,32 +43,6 @@ if (!fs.existsSync(downloadsDir)) {
 
 // User-Agent to mimic a browser
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36";
-
-// Retry function with delay
-const downloadWithRetry = (command, retries = 3, delayMs = 5000) => {
-    return new Promise((resolve, reject) => {
-        let attempt = 0;
-
-        const tryDownload = () => {
-            exec(command, (error, stdout, stderr) => {
-                if (error) {
-                    console.error(`Attempt ${attempt + 1} failed:`, stderr);
-                    if ((stderr.includes("HTTP Error 429") || stderr.includes("Sign in to confirm")) && attempt < retries) {
-                        attempt++;
-                        console.log(`Retrying (${attempt}/${retries}) in ${delayMs}ms...`);
-                        setTimeout(tryDownload, delayMs * attempt); // Exponential backoff
-                    } else {
-                        reject(error);
-                    }
-                } else {
-                    resolve(stdout.trim());
-                }
-            });
-        };
-
-        tryDownload();
-    });
-};
 
 // 📌 Download YouTube Audio
 app.post("/download", async (req, res) => {
@@ -81,9 +58,12 @@ app.post("/download", async (req, res) => {
     try {
         // 🎯 Step 1: Search for the song
         console.log("🔍 Running yt-dlp search...");
-        const searchCommand = `${ytDlpPath} "ytsearch1:${query}" --cookies ${cookiesPath} --user-agent "${userAgent}" --print "%(id)s"`;
-        const videoId = await downloadWithRetry(searchCommand);
+        const searchResult = execSync(
+            `${ytDlpPath} "ytsearch1:${query}" --cookies ${cookiesPath} --user-agent "${userAgent}" --print "%(id)s"`,
+            { encoding: "utf8" }
+        ).trim();
 
+        const videoId = searchResult;
         if (!videoId) {
             console.log("❌ No search results found!");
             return res.status(404).json({ error: "No results found." });
@@ -95,8 +75,33 @@ app.post("/download", async (req, res) => {
         // 📌 Step 2: Download the audio
         const outputFilePath = path.join(downloadsDir, `${videoId}.mp3`);
         console.log("⬇️ Downloading audio...");
-        const downloadCommand = `${ytDlpPath} ${videoUrl} --cookies ${cookiesPath} -x --audio-format mp3 -o ${outputFilePath}`;
-        await downloadWithRetry(downloadCommand);
+        
+        // Retry logic with execSync
+        let maxRetries = 3;
+        let attempt = 0;
+        let success = false;
+        while (attempt < maxRetries && !success) {
+            try {
+                execSync(
+                    `${ytDlpPath} ${videoUrl} --cookies ${cookiesPath} -x --audio-format mp3 -o ${outputFilePath}`,
+                    { stdio: "inherit" }
+                );
+                success = true;
+            } catch (retryError) {
+                console.error(`Attempt ${attempt + 1} failed:`, retryError.message);
+                if (retryError.message.includes("429") || retryError.message.includes("Sign in to confirm")) {
+                    attempt++;
+                    if (attempt < maxRetries) {
+                        console.log(`Retrying (${attempt}/${maxRetries}) in ${(attempt * 5)}s...`);
+                        await new Promise(resolve => setTimeout(resolve, attempt * 5000)); // Delay before retry
+                    } else {
+                        throw retryError;
+                    }
+                } else {
+                    throw retryError;
+                }
+            }
+        }
 
         console.log("✅ Download complete!");
 
