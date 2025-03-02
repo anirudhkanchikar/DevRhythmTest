@@ -42,22 +42,22 @@ if (!fs.existsSync(downloadsFolder)) {
     fs.mkdirSync(downloadsFolder, { recursive: true });
 }
 
-// Endpoint to download YouTube audio
+// Endpoint to handle YouTube audio download requests
 app.post("/download", async (req, res) => {
-    const { song, artist } = req.body;
-
-    if (!song || !artist) {
-        return res.status(400).json({ error: "Song name and artist are required." });
-    }
-
-    const query = `${song} ${artist}`;
-    console.log(`🔍 Searching YouTube for: ${query}`);
-
     try {
+        const { song, artist } = req.body;
+
+        if (!song || !artist) {
+            return res.status(400).json({ error: "Song name and artist are required." });
+        }
+
+        const query = `${song} ${artist}`;
+        console.log(`🔍 Searching YouTube for: ${query}`);
+
         // Search YouTube using authentication cookies
         const searchResult = await ytDlp.execPromise([
             `ytsearch1:${query}`,
-            "--cookies", cookiesPath,  // Use authentication cookies
+            "--cookies", cookiesPath,
             "--print", "%(id)s"
         ]);
 
@@ -72,11 +72,17 @@ app.post("/download", async (req, res) => {
         // Define output file path
         const outputFilePath = path.join(downloadsFolder, `${videoId}.mp3`);
 
+        // Check if file already exists (avoid re-downloading)
+        if (fs.existsSync(outputFilePath)) {
+            console.log("✅ File already exists, returning existing file.");
+            return res.json({ message: "File ready!", file: `/downloads/${videoId}.mp3` });
+        }
+
         // Download the audio using cookies
         console.log("⬇️ Downloading audio...");
         await ytDlp.execPromise([
             videoUrl,
-            "--cookies", cookiesPath,  // Use authentication cookies
+            "--cookies", cookiesPath,
             "-x",
             "--audio-format", "mp3",
             "-o", outputFilePath
@@ -84,7 +90,7 @@ app.post("/download", async (req, res) => {
 
         console.log("✅ Download complete!");
 
-        // Send file URL back to the Ionic app
+        // Send response with file URL
         res.json({ message: "Download complete!", file: `/downloads/${videoId}.mp3` });
 
     } catch (error) {
@@ -93,10 +99,10 @@ app.post("/download", async (req, res) => {
     }
 });
 
-// Serve static files from the downloads folder
+// Serve downloaded MP3 files
 app.use("/downloads", express.static(downloadsFolder));
 
-// Start server
+// Start the server
 app.listen(port, () => {
     console.log(`🚀 Server running on port ${port}`);
 });
